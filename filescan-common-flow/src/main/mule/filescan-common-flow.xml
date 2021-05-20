@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce"
+	xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd">
+  
+  <http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="7843afa3-805f-415b-a727-58ea05762441" basePath="/api/v1">
+    <http:request-connection host="localhost" port="8082" />
+  </http:request-config>
+  <http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="9c962b3e-47a9-4039-8a93-80120ef2f537" >
+    <http:listener-connection host="0.0.0.0" port="8081" />
+  </http:listener-config>
+  <sub-flow name="fileScan" doc:id="b26f9e83-d004-4aa7-9076-a72fc3599956" >
+    <logger level="INFO" doc:name="Logger" doc:id="26ad5207-8239-4a92-a895-57a80f11c719" message="about to scan" />
+    <choice doc:name="Choice" doc:id="087c7a9f-45ce-46b8-b27b-910e413ade68" >
+      <when expression="#[attributes.fileName != null]">
+        <ee:transform doc:name="Transform Message" doc:id="47850af1-bb1f-4bc3-9e93-eccc0b12d649" >
+          <ee:message >
+            <ee:set-payload ><![CDATA[%dw 2.0
+import dw::module::Multipart    
+output multipart/form-data boundary="--------------------------"
+---
+                {
+                parts : {
+                    file : {
+                        headers : {
+                            "Content-Disposition" : {
+                                "name": "FILES",
+                                "filename": attributes.fileName
+                                },
+                            "Content-Type" : payload.^mediaType
+                            },
+                        content : payload
+                        }
+                    }
+}
+]]></ee:set-payload>
+          </ee:message>
+        </ee:transform>
+        <http:request method="POST" doc:name="send to scan" doc:id="e332f945-34e6-4a95-8de6-853d533887f1" config-ref="HTTP_Request_configuration" path="/scan" sendCorrelationId="ALWAYS" sendBodyMode="ALWAYS" requestStreamingMode="AUTO"/>
+        <ee:transform doc:name="check if scan is success" doc:id="cc4fcea0-fff0-4d20-b1d0-d01c7de7b036" >
+          <ee:message >
+          </ee:message>
+          <ee:variables >
+            <ee:set-variable variableName="scanResponse" ><![CDATA[%dw 2.0
+import * from dw::Runtime
+output application/json
+---
+if (payload.success==false) fail('file/content scan failed, this does not mean virus is detected') else [payload]]]></ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </when>
+      <when expression='#[attributes.headers."content-type" contains("multipart/form-data")]'>
+        <http:request method="POST" doc:name="send to scan" doc:id="445fcfdd-4e71-4281-ae1f-6c3c12772bb1" config-ref="HTTP_Request_configuration" path="/scan" sendCorrelationId="ALWAYS" sendBodyMode="ALWAYS" requestStreamingMode="AUTO" />
+        <ee:transform doc:name="check if scan is success" doc:id="74f3d322-ffdb-4f85-b97e-98ad7b4d7a73" >
+          <ee:message />
+          <ee:variables >
+            <ee:set-variable variableName="scanResponse" ><![CDATA[%dw 2.0
+import * from dw::Runtime
+output application/json
+---
+if (payload.success==false) fail('file/content scan failed, this does not mean virus is detected') else [payload]]]></ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </when>
+      <otherwise >
+        <foreach doc:name="For Each" doc:id="9ea88366-5c1a-48f3-aa8b-97d6ccf4c4eb" >
+          <ee:transform doc:name="Prepare Request" doc:id="55e8f159-c373-4e57-8a94-2088ccc43cbe">
+          <ee:message>
+              <ee:set-payload ><![CDATA[%dw 2.0
+import dw::module::Multipart    
+output multipart/form-data boundary="--------------------------"
+---
+  parts: 
+                 {
+                    	    file : {
+                        headers : {
+                            "Content-Disposition" : {
+                                "name": "FILES",
+                                "filename": attributes.fileName
+                                },
+                            "Content-Type" : payload.^mediaType
+                            },
+                        content : payload
+                        }
+                    } 
+                    
+                    
+               ]]></ee:set-payload>
+          </ee:message>
+            <ee:variables >
+            </ee:variables>
+        </ee:transform>
+          <http:request method="POST" doc:name="send to scan" doc:id="d93895b3-8632-4a72-8589-ff135bb2e5c6" config-ref="HTTP_Request_configuration" path="/scan" sendCorrelationId="ALWAYS" requestStreamingMode="AUTO" sendBodyMode="ALWAYS">
+    </http:request>
+          <ee:transform doc:name="check if scan is success" doc:id="38911e4e-aabe-4bd7-9be5-7f4fa18f4901">
+            <ee:message>
+              <ee:set-payload><![CDATA[%dw 2.0
+import * from dw::Runtime
+output application/json
+---
+if (payload.success==false) fail('file/content scan failed, this does not mean virus is detected') else [payload]]]></ee:set-payload>
+            </ee:message>
+          </ee:transform>
+          <ee:transform doc:name="scan response" doc:id="a40afb84-e5c0-4b62-b4bb-791c51a2e45f" >
+            <ee:message >
+            </ee:message>
+            <ee:variables >
+              <ee:set-variable variableName="scanResponse" ><![CDATA[%dw 2.0
+output application/json
+---
+{
+
+	(payload) , (vars.scanResponse)
+}]]></ee:set-variable>
+            </ee:variables>
+          </ee:transform>
+        </foreach>
+      </otherwise>
+    </choice>
+    <ee:transform doc:name="check if virus detected and report error" doc:id="5ffe4234-fca1-468a-9b6c-2a65a3322b69" >
+      <ee:message >
+        <ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::Runtime
+output application/json
+---
+if ( isEmpty((flatten(vars.scanResponse.*data.*result) groupBy $."is_infected")."true") )
+("No virus detected") 
+else fail("virus detected")
+
+
+]]></ee:set-payload>
+      </ee:message>
+    </ee:transform>
+    <logger level="INFO" doc:name="Logger" doc:id="f8a86629-f937-41aa-b487-48b8fc2f7cb5" message="scan complete" />
+  </sub-flow>
+  <!-- <flow name="HTTPSource" doc:id="37d0c12e-78e0-4a1b-ad68-751240c10975" >
+    <http:listener doc:name="Listener" doc:id="f30e0005-e309-400d-a3b8-7541f860bff1" config-ref="HTTP_Listener_config" path="/fileScan">
+      <http:error-response >
+        <http:body ><![CDATA[#[output text/plain -&#45;&#45; payload]]]></http:body>
+      </http:error-response>
+    </http:listener>
+    <flow-ref doc:name="Flow Reference" doc:id="83bde478-453c-4367-aeed-eaea60523d03" name="fileScan"/>
+    <ee:transform doc:name="Transform Message" doc:id="87b0deb8-de7c-402a-ab05-fea16809c7d9" >
+      <ee:message >
+        <ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+-&#45;&#45;
+{
+	"status" : payload,
+	"scanResult": vars.scanResponse
+}]]></ee:set-payload>
+      </ee:message>
+    </ee:transform>
+    <error-handler >
+      <on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="bd2b4b76-40f6-4d2e-96cf-a94663f6626f" >
+        <ee:transform doc:name="Transform Message" doc:id="2e606879-116d-4cea-874d-4b78a17d4aa9" >
+          <ee:message >
+            <ee:set-payload ><![CDATA[
+%dw 2.0
+output application/json
+-&#45;&#45;
+{
+	"status" :  (error.description splitBy("\n") )[0],
+	"scanResult": vars.scanResponse
+}
+]]></ee:set-payload>
+          </ee:message>
+        </ee:transform>
+      </on-error-continue>
+    </error-handler>
+  </flow> -->
+  <!-- <flow name="filescan-common-flowFlow" doc:id="345756ad-b008-4c3e-9114-26a96c3805a0" >
+    <scheduler doc:name="Scheduler" doc:id="738224ba-4500-4f22-9883-d40b04696ffe" >
+      <scheduling-strategy >
+        <fixed-frequency />
+      </scheduling-strategy>
+    </scheduler>
+    <file:list doc:name="List" doc:id="0b0b37da-ca11-4ec5-ae22-fded8e5ee2ab" directoryPath="D:\Karthik\Technical\MuleSoft\HackMatters\FileScan\FileScanExamples\IN"/>
+    <flow-ref doc:name="Flow Reference" doc:id="b9f2769d-5f0b-4542-8826-9c9c7946d10a" name="fileScan" />
+  </flow> -->
+  <!-- <flow name="filescan-common-flowFlow1" doc:id="3d507fd8-abec-43b3-ae54-42a2334dc84f" >
+    <file:listener doc:name="On New or Updated File" doc:id="d4df27c7-e1e9-4034-9a22-87bdad85e59b" directory="D:\Karthik\Technical\MuleSoft\HackMatters\FileScan\FileScanExamples\IN">
+      <scheduling-strategy >
+        <fixed-frequency />
+      </scheduling-strategy>
+    </file:listener>
+    <flow-ref doc:name="Flow Reference" doc:id="cb0af44a-6bd6-427d-b29c-84ebe24c941c" name="fileScan" />
+  </flow> -->
+</mule>
